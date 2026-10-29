@@ -5,6 +5,8 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import EmptyPage from "./pages/EmptyPage";
+import Certificate from "./pages/Certificate";
+import Payout from "./pages/Payout";
 
 function App() {
   return (
@@ -27,8 +29,9 @@ function App() {
           <Route path="/learn" element={<EmptyPage />} />
           <Route path="/weekly-analysis" element={<EmptyPage />} />
           <Route path="/journal" element={<EmptyPage />} />
-          <Route path="/certificate" element={<EmptyPage />} />
+          <Route path="/certificate" element={<Certificate />} />
           <Route path="/payout" element={<EmptyPage />} />
+          <Route path="/payout" element={<Payout />} />
           <Route path="/contact-social-media" element={<EmptyPage />} />
         </Route>
       </Routes>
