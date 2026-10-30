@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const net = require("node:net");
+const path = require("node:path");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
 
@@ -13,6 +14,13 @@ app.use(express.json());
 app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
+
+const frontendDist = path.join(__dirname, "../frontend/dist");
+app.use(express.static(frontendDist));
+app.get(/.*/, (req, res, next) => {
+  if (req.path.startsWith("/api/")) return next();
+  res.sendFile(path.join(frontendDist, "index.html"));
+});
 
 const startServer = async () => {
   const port = Number(process.env.PORT || 5000);
