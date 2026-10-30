@@ -4,23 +4,34 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const net = require("node:net");
-const path = require("node:path");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://ab-sniper-fkn2.vercel.app",
+  ],
+  credentials: true,
+}));
 app.use(express.json());
 app.use(morgan("dev"));
 
-app.use("/api/auth", authRoutes);
-
-const frontendDist = path.join(__dirname, "../frontend/dist");
-app.use(express.static(frontendDist));
-app.get(/.*/, (req, res, next) => {
-  if (req.path.startsWith("/api/")) return next();
-  res.sendFile(path.join(frontendDist, "index.html"));
+// Health / root — so opening the URL in a browser is not a 404
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "AB-Sniper API",
+    auth: {
+      register: "POST /api/auth/register",
+      login: "POST /api/auth/login",
+    },
+  });
 });
+
+app.use("/api/auth", authRoutes);
 
 const startServer = async () => {
   const port = Number(process.env.PORT || 5000);
@@ -46,12 +57,13 @@ const startServer = async () => {
 
   await connectDB();
 
-  app.listen(port, () => {
+  // 0.0.0.0 = accept connections on Render
+  app.listen(port, "0.0.0.0", () => {
     console.log(`Server running on port ${port}`);
   });
 };
 
 startServer().catch((err) => {
   console.error(`Backend startup failed: ${err.message}`);
-  process.exitCode = 1;
+  process.exit(1);
 });
