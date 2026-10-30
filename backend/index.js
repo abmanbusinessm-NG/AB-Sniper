@@ -12,7 +12,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://ab-sniper-fkn2.vercel.app",
+    "https://ab-sniper.vercel.app",
   ],
   credentials: true,
 }));
