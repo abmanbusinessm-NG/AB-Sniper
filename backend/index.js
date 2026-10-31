@@ -6,7 +6,7 @@ const morgan = require("morgan");
 const net = require("node:net");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
-const mediaRoutes = require("./routes/media"); // ← media (Cloudinary uploads)
+const mediaRoutes = require("./routes/media");
 
 const app = express();
 
@@ -26,7 +26,7 @@ app.use(
 app.use(express.json());
 app.use(morgan("dev"));
 
-// Health / root — browser check
+// Health / root
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -43,12 +43,11 @@ app.get("/", (req, res) => {
   });
 });
 
-// Auth routes (login / register)
+// Auth routes
 app.use("/api/auth", authRoutes);
 
-// Media routes (Cloudinary images)  ← this is Step 8
+// Media routes (Cloudinary)
 app.use("/api/media", mediaRoutes);
-const mediaRoutes = require("./routes/media");
 
 const startServer = async () => {
   const port = Number(process.env.PORT || 5000);
