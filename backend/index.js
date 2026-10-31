@@ -26,7 +26,6 @@ app.use(
 app.use(express.json());
 app.use(morgan("dev"));
 
-// Health / root
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -43,10 +42,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// Auth routes
 app.use("/api/auth", authRoutes);
-
-// Media routes (Cloudinary)
 app.use("/api/media", mediaRoutes);
 
 const startServer = async () => {
