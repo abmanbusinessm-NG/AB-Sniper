@@ -48,6 +48,7 @@ app.use("/api/auth", authRoutes);
 
 // Media routes (Cloudinary images)  ← this is Step 8
 app.use("/api/media", mediaRoutes);
+const mediaRoutes = require("./routes/media");
 
 const startServer = async () => {
   const port = Number(process.env.PORT || 5000);
