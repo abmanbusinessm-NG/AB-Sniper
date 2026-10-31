@@ -6,20 +6,27 @@ const morgan = require("morgan");
 const net = require("node:net");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
+const mediaRoutes = require("./routes/media"); // ← media (Cloudinary uploads)
 
 const app = express();
 
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://ab-sniper.vercel.app",
-  ],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:4173",
+      "https://ab-sniper.vercel.app",
+      "https://ab-sniper-fkn2.vercel.app",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 app.use(morgan("dev"));
 
-// Health / root — so opening the URL in a browser is not a 404
+// Health / root — browser check
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -28,10 +35,19 @@ app.get("/", (req, res) => {
       register: "POST /api/auth/register",
       login: "POST /api/auth/login",
     },
+    media: {
+      list: "GET /api/media",
+      upload: "POST /api/media",
+      delete: "DELETE /api/media/:id",
+    },
   });
 });
 
+// Auth routes (login / register)
 app.use("/api/auth", authRoutes);
+
+// Media routes (Cloudinary images)  ← this is Step 8
+app.use("/api/media", mediaRoutes);
 
 const startServer = async () => {
   const port = Number(process.env.PORT || 5000);
@@ -57,7 +73,6 @@ const startServer = async () => {
 
   await connectDB();
 
-  // 0.0.0.0 = accept connections on Render
   app.listen(port, "0.0.0.0", () => {
     console.log(`Server running on port ${port}`);
   });
