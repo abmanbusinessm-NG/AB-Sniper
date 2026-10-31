@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const STORAGE_KEY = "tradevibe_certificates";
+
+/** Compress image in the browser (canvas) — max width 1200px, JPEG quality 0.7 */
+function compressImage(file, maxWidth = 1200, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not load image"));
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function formatDate(iso) {
   try {
@@ -14,11 +40,6 @@ function formatDate(iso) {
   }
 }
 
-function authHeaders() {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 export default function Certificate() {
   const [certs, setCerts] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -26,24 +47,23 @@ export default function Certificate() {
   const [preview, setPreview] = useState(null);
   const inputRef = useRef(null);
 
-  const loadCerts = async () => {
-    setError("");
+  useEffect(() => {
     try {
-      const res = await fetch(`${API}/api/media?type=certificate`, {
-        headers: { ...authHeaders() },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to load certificates");
-      setCerts(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err.message || "Failed to load");
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setCerts(JSON.parse(raw));
+    } catch {
       setCerts([]);
     }
-  };
-
-  useEffect(() => {
-    loadCerts();
   }, []);
+
+  const save = (next) => {
+    setCerts(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      setError("Storage full. Delete some certificates and try again.");
+    }
+  };
 
   const handlePick = () => {
     setError("");
@@ -59,30 +79,27 @@ export default function Certificate() {
     setError("");
 
     try {
+      const added = [];
       for (const file of files) {
         if (!file.type.startsWith("image/")) {
           setError("Please choose image files only (JPG, PNG, WebP…).");
           continue;
         }
         if (file.size > 25 * 1024 * 1024) {
-          setError("One file is too large (max ~25MB).");
+          setError("One file is too large (max ~25MB before compression).");
           continue;
         }
-
-        const form = new FormData();
-        form.append("image", file);
-        form.append("type", "certificate");
-        form.append("name", file.name);
-
-        const res = await fetch(`${API}/api/media`, {
-          method: "POST",
-          headers: { ...authHeaders() },
-          body: form,
+        const dataUrl = await compressImage(file);
+        added.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          dataUrl,
+          name: file.name,
+          addedAt: new Date().toISOString(),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Upload failed");
       }
-      await loadCerts();
+      if (added.length) {
+        save([...added, ...certs]);
+      }
     } catch (err) {
       setError(err.message || "Upload failed");
     } finally {
@@ -90,21 +107,10 @@ export default function Certificate() {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = (id) => {
     if (!window.confirm("Remove this certificate?")) return;
-    setError("");
-    try {
-      const res = await fetch(`${API}/api/media/${id}`, {
-        method: "DELETE",
-        headers: { ...authHeaders() },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || "Delete failed");
-      await loadCerts();
-      if (preview?._id === id) setPreview(null);
-    } catch (err) {
-      setError(err.message || "Delete failed");
-    }
+    save(certs.filter((c) => c.id !== id));
+    if (preview?.id === id) setPreview(null);
   };
 
   return (
@@ -132,7 +138,7 @@ export default function Certificate() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {certs.map((cert) => (
           <div
-            key={cert._id}
+            key={cert.id}
             className="group bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition flex flex-col"
           >
             <button
@@ -141,7 +147,7 @@ export default function Certificate() {
               className="aspect-[4/3] bg-slate-950/80 overflow-hidden text-left"
             >
               <img
-                src={cert.url}
+                src={cert.dataUrl}
                 alt={cert.name || "Certificate"}
                 className="w-full h-full object-cover group-hover:scale-[1.02] transition duration-300"
               />
@@ -149,12 +155,13 @@ export default function Certificate() {
             <div className="p-4 flex items-center justify-between gap-2">
               <p className="text-xs text-slate-400 flex items-center gap-1.5 truncate">
                 <span aria-hidden>📅</span>
-                <span>Added · {formatDate(cert.createdAt)}</span>
+                <span>Added · {formatDate(cert.addedAt)}</span>
               </p>
               <button
                 type="button"
-                onClick={() => handleDelete(cert._id)}
+                onClick={() => handleDelete(cert.id)}
                 className="text-xs text-slate-500 hover:text-rose-400 transition shrink-0 px-2 py-1 rounded-lg hover:bg-rose-500/10"
+                title="Delete"
               >
                 Delete
               </button>
@@ -171,7 +178,7 @@ export default function Certificate() {
           {uploading ? (
             <>
               <span className="text-3xl animate-pulse">⏳</span>
-              <span className="text-sm font-medium">Uploading…</span>
+              <span className="text-sm font-medium">Compressing & saving…</span>
             </>
           ) : (
             <>
@@ -199,7 +206,7 @@ export default function Certificate() {
           >
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
               <p className="text-sm text-slate-300 truncate">
-                Added · {formatDate(preview.createdAt)}
+                Added · {formatDate(preview.addedAt)}
                 {preview.name ? ` · ${preview.name}` : ""}
               </p>
               <button
@@ -212,7 +219,7 @@ export default function Certificate() {
             </div>
             <div className="p-4 overflow-auto max-h-[calc(90vh-56px)] flex justify-center bg-slate-950">
               <img
-                src={preview.url}
+                src={preview.dataUrl}
                 alt={preview.name || "Certificate"}
                 className="max-w-full max-h-[75vh] object-contain rounded-lg"
               />
