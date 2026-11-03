@@ -13,8 +13,8 @@ export default function Home() {
       <nav className="relative border-b border-slate-800/60 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="text-xl font-bold tracking-tight">
-            <span className="text-emerald-400">Trade</span>
-            <span className="text-white">Vibe</span>
+            <span className="text-emerald-400">AB</span>
+            <span className="text-white">Sniper</span>
           </div>
           <div className="flex items-center gap-3">
             <Link
@@ -157,7 +157,7 @@ export default function Home() {
       <footer className="relative border-t border-slate-800 py-10">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
           <div className="font-medium">
-            <span className="text-emerald-400">Trade</span>Vibe
+            <span className="text-emerald-400">AB</span>Vibe
           </div>
           <div>Made for traders who are done with random results.</div>
         </div>
