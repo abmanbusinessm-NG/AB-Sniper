@@ -76,8 +76,12 @@ export default function Journal() {
     lesson: "",
   });
 
-  const emotionOptions = ["Patient", "Focused", "FOMO", "Anxious", "Confident", "Tilted"];
+  const [calMonth, setCalMonth] = useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
 
+  const emotionOptions = ["Patient", "Focused", "FOMO", "Anxious", "Confident", "Tilted"];
   useEffect(() => {
     setTrades(loadJSON(TRADES_KEY, []));
     setReviews(loadJSON(REVIEWS_KEY, {}));
@@ -144,14 +148,13 @@ export default function Journal() {
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }, [trades, search, filterSide, filterOutcome]);
 
-  // Calendar for current month
+  // Trading calendar (navigable months)
   const cal = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
+    const year = calMonth.getFullYear();
+    const month = calMonth.getMonth();
     const first = new Date(year, month, 1);
     const last = new Date(year, month + 1, 0);
-    const startPad = (first.getDay() + 6) % 7; // Mon=0
+    const startPad = first.getDay(); // Sunday = 0
     const daysInMonth = last.getDate();
     const byDay = {};
     trades.forEach((t) => {
@@ -159,30 +162,68 @@ export default function Journal() {
       const d = new Date(t.date + "T12:00:00");
       if (d.getMonth() !== month || d.getFullYear() !== year) return;
       const day = d.getDate();
-      byDay[day] = (byDay[day] || 0) + parseResult(t.result);
+      if (!byDay[day]) byDay[day] = { pnl: 0, count: 0 };
+      byDay[day].pnl += parseResult(t.result);
+      byDay[day].count += 1;
     });
+
     const cells = [];
     for (let i = 0; i < startPad; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) {
-      const pnl = byDay[d];
+      const info = byDay[d];
       let status = "none";
-      if (pnl !== undefined) status = pnl > 0 ? "win" : pnl < 0 ? "loss" : "flat";
-      cells.push({ day: d, pnl, status });
+      if (info) {
+        status = info.pnl > 0 ? "win" : info.pnl < 0 ? "loss" : "flat";
+      }
+      cells.push({
+        day: d,
+        pnl: info?.pnl,
+        count: info?.count || 0,
+        status,
+      });
     }
-    const profitable = Object.values(byDay).filter((v) => v > 0).length;
-    const losing = Object.values(byDay).filter((v) => v < 0).length;
-    const tradedDays = Object.keys(byDay).length;
-    const noTrades = daysInMonth - tradedDays;
-    const monthPnl = Object.values(byDay).reduce((s, v) => s + v, 0);
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const weeks = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      const row = cells.slice(i, i + 7);
+      const weekPnl = row.reduce(
+        (s, c) => s + (c && c.pnl !== undefined ? c.pnl : 0),
+        0
+      );
+      const weekTrades = row.reduce((s, c) => s + (c ? c.count : 0), 0);
+      weeks.push({ row, weekPnl, weekTrades });
+    }
+
+    const monthPnl = Object.values(byDay).reduce((s, v) => s + v.pnl, 0);
+    const now = new Date();
+    const isCurrentMonth =
+      now.getFullYear() === year && now.getMonth() === month;
+
     return {
-      label: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-      cells,
-      profitable,
-      losing,
-      noTrades,
+      label: calMonth.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      }),
+      weeks,
       monthPnl,
+      isCurrentMonth,
+      todayDay: isCurrentMonth ? now.getDate() : null,
     };
-  }, [trades]);
+  }, [trades, calMonth]);
+
+  const prevMonth = () => {
+    setCalMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCalMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  };
+
+  const goToday = () => {
+    const n = new Date();
+    setCalMonth(new Date(n.getFullYear(), n.getMonth(), 1));
+  };
 
   const patterns = useMemo(() => {
     const bySetup = {};
@@ -599,65 +640,136 @@ export default function Journal() {
       </div>
 
       {/* Calendar + Patterns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            📅 Monthly P&L Calendar
-          </h3>
-          <p className="text-sm text-slate-400 mb-3">{cal.label}</p>
-          <div className="grid grid-cols-7 gap-1.5 text-center text-xs mb-2 text-slate-500">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-              <div key={d}>{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {cal.cells.map((cell, i) =>
-              cell === null ? (
-                <div key={`e-${i}`} className="aspect-square" />
-              ) : (
-                <div
-                  key={cell.day}
-                  title={
-                    cell.pnl !== undefined ? formatMoney(cell.pnl) : "No trades"
-                  }
-                  className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium ${
-                    cell.status === "win"
-                      ? "bg-emerald-500/80 text-slate-950"
-                      : cell.status === "loss"
-                        ? "bg-rose-500/80 text-white"
-                        : cell.status === "flat"
-                          ? "bg-slate-600 text-white"
-                          : "bg-slate-800/80 text-slate-500"
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-white">Trading Calendar</h3>
+              <p className="text-sm mt-1">
+                <span className="text-slate-400">Monthly PnL: </span>
+                <span
+                  className={`font-semibold ${
+                    cal.monthPnl >= 0 ? "text-emerald-400" : "text-rose-400"
                   }`}
                 >
-                  {cell.day}
+                  {formatMoney(cal.monthPnl)}
+                </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={prevMonth}
+                className="h-9 w-9 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <span className="text-sm font-medium text-white min-w-[140px] text-center">
+                {cal.label}
+              </span>
+              <button
+                type="button"
+                onClick={nextMonth}
+                className="h-9 w-9 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                aria-label="Next month"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={goToday}
+                className="ml-2 h-9 px-3 rounded-lg border border-slate-600 text-xs text-slate-200 hover:bg-slate-800 transition"
+              >
+                Today
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-8 gap-1 text-[10px] sm:text-xs text-slate-500 mb-1 text-center">
+            {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((d) => (
+              <div key={d} className="py-1 font-medium">
+                {d}
+              </div>
+            ))}
+            <div className="py-1 font-medium">WEEK</div>
+          </div>
+
+          <div className="space-y-1">
+            {cal.weeks.map((week, wi) => (
+              <div key={wi} className="grid grid-cols-8 gap-1">
+                {week.row.map((cell, ci) =>
+                  cell === null ? (
+                    <div
+                      key={`e-${wi}-${ci}`}
+                      className="min-h-[72px] rounded-lg bg-transparent"
+                    />
+                  ) : (
+                    <div
+                      key={cell.day}
+                      className={`min-h-[72px] rounded-lg p-1.5 flex flex-col border border-slate-800/80 ${
+                        cell.status === "win"
+                          ? "bg-emerald-500/15"
+                          : cell.status === "loss"
+                            ? "bg-rose-500/15"
+                            : "bg-slate-950/40"
+                      } ${
+                        cal.todayDay === cell.day ? "ring-2 ring-white/80" : ""
+                      }`}
+                    >
+                      <span
+                        className={`text-xs font-medium ${
+                          cal.todayDay === cell.day
+                            ? "text-white"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        {cell.day}
+                      </span>
+                      {cell.count > 0 && (
+                        <>
+                          <span
+                            className={`text-xs font-semibold mt-auto ${
+                              cell.pnl > 0
+                                ? "text-emerald-400"
+                                : cell.pnl < 0
+                                  ? "text-rose-400"
+                                  : "text-slate-400"
+                            }`}
+                          >
+                            {formatMoney(cell.pnl)}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {cell.count} trade{cell.count !== 1 ? "s" : ""}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )
+                )}
+                <div className="min-h-[72px] rounded-lg p-1.5 flex flex-col justify-center bg-slate-950/60 border border-slate-800/80">
+                  {week.weekTrades > 0 ? (
+                    <>
+                      <span
+                        className={`text-xs font-semibold ${
+                          week.weekPnl >= 0
+                            ? "text-emerald-400"
+                            : "text-rose-400"
+                        }`}
+                      >
+                        {formatMoney(week.weekPnl)}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {week.weekTrades} trades
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-slate-600">—</span>
+                  )}
                 </div>
-              )
-            )}
+              </div>
+            ))}
           </div>
-          <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Profitable{" "}
-              {cal.profitable}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Losing {cal.losing}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-600" /> No trades{" "}
-              {cal.noTrades}
-            </span>
-          </div>
-          <p className="mt-3 text-sm">
-            <span className="text-slate-400">Monthly P&L </span>
-            <span
-              className={`font-bold ${
-                cal.monthPnl >= 0 ? "text-emerald-400" : "text-rose-400"
-              }`}
-            >
-              {formatMoney(cal.monthPnl)}
-            </span>
-          </p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
