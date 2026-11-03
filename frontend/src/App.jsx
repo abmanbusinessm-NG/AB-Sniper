@@ -11,6 +11,8 @@ import WeeklyAnalysis from "./pages/WeeklyAnalysis";
 import ContactSocialMedia from "./pages/ContactSocialMedia";
 import Dashboard from "./pages/Dashboard";
 import Journal from "./pages/Journal";
+import Learn from "./pages/Learn";
+import GrowthTracker from "./pages/GrowthTracker";
 
 function App() {
   return (
@@ -30,11 +32,12 @@ function App() {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/learn" element={<EmptyPage />} />
+          <Route path="/learn" element={<Learn />} />
           <Route path="/weekly-analysis" element={<WeeklyAnalysis />} />
           <Route path="/journal" element={<Journal />} />
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/payout" element={<Payout />} />
+          <Route path="/growth-tracker" element={<GrowthTracker />} />
           <Route path="/contact-social-media" element={<ContactSocialMedia />} />
         </Route>
       </Routes>
