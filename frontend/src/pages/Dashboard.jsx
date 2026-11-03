@@ -35,8 +35,6 @@ const defaultPlan = [
 const watchlistSymbols = [
   { symbol: "XAUUSD", flag: "🥇" },
   { symbol: "NAS100", flag: "🇺🇸" },
-  { symbol: "GBPUSD", flag: "🇬🇧" },
-  { symbol: "EURUSD", flag: "🇪🇺" },
   { symbol: "DXY", flag: "💵" },
   { symbol: "US10Y", flag: "🇺🇸" },
   { symbol: "VIX", flag: "📉" },
