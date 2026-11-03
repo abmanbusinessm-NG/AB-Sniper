@@ -29,13 +29,21 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900/95 border-r border-slate-800 flex flex-col">
         <div className="p-6 border-b border-slate-800">
-          <h1 className="text-xl font-bold tracking-tight">
-            <span className="text-emerald-400">Trade</span>
-            <span className="text-white">Vibe</span>
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">Stay consistent. Stay sharp.</p>
-        </div>
-
+  <div className="flex items-center gap-3">
+    <img
+      src="/favicon.svg"
+      alt="AB Sniper"
+      className="h-17 w-17 object-contain shrink-0"
+    />
+    <div>
+      <h1 className="text-xl font-bold tracking-tight leading-tight">
+        <span className="text-emerald-400">AB</span>
+        <span className="text-white"> Sniper</span>
+      </h1>
+      <p className="text-xs text-slate-500 mt-0.5">Trade · Learn · Grow</p>
+    </div>
+  </div>
+</div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => (
             <NavLink
