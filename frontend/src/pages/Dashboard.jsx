@@ -87,6 +87,96 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [trades]);
 
+  // Equity curve – starts at $0, flat on no-trade days
+  const equityCurve = useMemo(() => {
+    if (!trades.length) {
+      return {
+        points: [{ date: "Start", y: 0, hasTrade: false }],
+        max: 100,
+        min: 0,
+        final: 0,
+        yTicks: [0, 100],
+        xLabels: [{ idx: 0, label: "Start" }],
+      };
+    }
+
+    const sorted = [...trades]
+      .filter((t) => t.date)
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    const byDay = {};
+    sorted.forEach((t) => {
+      const d = t.date;
+      if (!byDay[d]) byDay[d] = 0;
+      byDay[d] += parseResult(t.result);
+    });
+
+    const days = Object.keys(byDay).sort();
+    const firstDay = new Date(days[0] + "T12:00:00");
+    const lastDay = new Date(days[days.length - 1] + "T12:00:00");
+
+    const points = [{ date: "Start", y: 0, hasTrade: false }];
+
+    let cumulative = 0;
+    const cursor = new Date(firstDay);
+
+    while (cursor <= lastDay) {
+      const key = cursor.toISOString().slice(0, 10);
+      if (byDay[key] !== undefined) {
+        cumulative += byDay[key];
+      }
+      points.push({
+        date: key,
+        y: cumulative,
+        hasTrade: byDay[key] !== undefined,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const ys = points.map((p) => p.y);
+    let max = Math.max(...ys, 0);
+    let min = Math.min(...ys, 0);
+
+    const step = 100;
+    max = Math.ceil(max / step) * step;
+    min = Math.floor(min / step) * step;
+    if (max === min) max = min + step;
+    if (max === 0 && min === 0) max = 100;
+
+    const yTicks = [];
+    for (let v = min; v <= max; v += step) {
+      yTicks.push(v);
+    }
+
+    const xLabels = [];
+    const labelCount = Math.min(8, points.length);
+    for (let i = 0; i < labelCount; i++) {
+      const idx = Math.round((i / (labelCount - 1 || 1)) * (points.length - 1));
+      const p = points[idx];
+      let label = p.date === "Start" ? "Start" : p.date;
+      if (p.date !== "Start") {
+        try {
+          label = new Date(p.date + "T12:00:00").toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+        } catch {
+          /* keep */
+        }
+      }
+      xLabels.push({ idx, label });
+    }
+
+    return {
+      points,
+      max,
+      min,
+      final: cumulative,
+      yTicks,
+      xLabels,
+    };
+  }, [trades]);
+
   const setups = useMemo(() => {
     const map = {};
     trades.forEach((t) => {
@@ -102,41 +192,6 @@ export default function Dashboard() {
       .sort((a, b) => b.pnl - a.pnl)
       .slice(0, 4);
   }, [trades]);
-
-  const calendar = useMemo(() => {
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const first = new Date(year, month, 1);
-    const last = new Date(year, month + 1, 0);
-    const startPad = (first.getDay() + 6) % 7;
-    const byDay = {};
-    trades.forEach((t) => {
-      if (!t.date) return;
-      const d = new Date(t.date + "T12:00:00");
-      if (d.getMonth() !== month || d.getFullYear() !== year) return;
-      const day = d.getDate();
-      byDay[day] = (byDay[day] || 0) + parseResult(t.result);
-    });
-    const cells = [];
-    for (let i = 0; i < startPad; i++) cells.push(null);
-    for (let d = 1; d <= last.getDate(); d++) {
-      const pnl = byDay[d];
-      let status = "none";
-      if (pnl !== undefined) status = pnl > 0 ? "win" : pnl < 0 ? "loss" : "flat";
-      cells.push({ day: d, status, pnl });
-    }
-    const profitable = Object.values(byDay).filter((v) => v > 0).length;
-    const losing = Object.values(byDay).filter((v) => v < 0).length;
-    const traded = Object.keys(byDay).length;
-    return {
-      label: now.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-      cells,
-      profitable,
-      losing,
-      noTrade: last.getDate() - traded,
-      monthPnl: Object.values(byDay).reduce((s, v) => s + v, 0),
-    };
-  }, [trades, now]);
 
   const togglePlan = (id) => {
     const next = plan.map((item) =>
@@ -235,44 +290,164 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Chart placeholder + Watchlist + Quick Actions */}
+      {/* Equity Curve + Quick Actions */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        {/* Chart area */}
-        <div className="xl:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 min-h-[280px] flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-white">XAUUSD</span>
-              <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded">1h</span>
+        {/* Trading Growth Curve */}
+        <div className="xl:col-span-9 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 min-h-[340px] flex flex-col">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Trading Growth Curve</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Starts at $0 · from your Journal trades</p>
             </div>
-            <span className="text-xs text-slate-500">Chart · no live feed</span>
-          </div>
-          <div className="flex-1 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
-            <span className="text-3xl opacity-50">📉</span>
-            <p>Price chart placeholder</p>
-            <p className="text-xs">Connect a chart widget or broker later</p>
-          </div>
-        </div>
 
-        {/* Watchlist */}
-        <div className="xl:col-span-3 bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-white">Watchlist</h3>
-            <span className="text-xs text-slate-500">Prices 0.00</span>
-          </div>
-          <div className="space-y-2">
-            {watchlistSymbols.map((w) => (
-              <div
-                key={w.symbol}
-                className="flex items-center justify-between text-sm py-1.5 border-b border-slate-800/80 last:border-0"
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <span className="flex items-center gap-1.5 text-slate-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                Equity
+              </span>
+              <span
+                className={`font-semibold ${
+                  equityCurve.final >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
               >
-                <span className="text-slate-300 flex items-center gap-2">
-                  <span>{w.flag}</span> {w.symbol}
-                </span>
-                <span className="text-slate-500 tabular-nums">0.00</span>
-                <span className="text-slate-600 text-xs w-12 text-right">0.00%</span>
-              </div>
-            ))}
+                {formatMoney(equityCurve.final)}
+              </span>
+            </div>
           </div>
+
+          {equityCurve.points.length <= 1 ? (
+            <div className="flex-1 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
+              <span className="text-3xl opacity-50">📈</span>
+              <p>No trades yet</p>
+              <p className="text-xs">Log trades in Journal — curve starts from $0</p>
+            </div>
+          ) : (
+            <div className="flex-1 relative min-h-[240px]">
+              <svg
+                viewBox="0 0 520 240"
+                className="w-full h-full"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d={(() => {
+                    const range = equityCurve.max - equityCurve.min || 1;
+                    const toX = (i) =>
+                      50 + (i / (equityCurve.points.length - 1 || 1)) * 450;
+                    const toY = (v) =>
+                      20 + ((equityCurve.max - v) / range) * 180;
+
+                    let d = `M ${toX(0)} ${toY(0)} `;
+                    equityCurve.points.forEach((p, i) => {
+                      d += `L ${toX(i)} ${toY(p.y)} `;
+                    });
+                    d += `L ${toX(equityCurve.points.length - 1)} ${toY(0)} Z`;
+                    return d;
+                  })()}
+                  fill={
+                    equityCurve.final >= 0
+                      ? "rgba(96, 165, 250, 0.12)"
+                      : "rgba(251, 113, 133, 0.12)"
+                  }
+                />
+
+                {equityCurve.yTicks.map((tick) => {
+                  const range = equityCurve.max - equityCurve.min || 1;
+                  const y = 20 + ((equityCurve.max - tick) / range) * 180;
+                  return (
+                    <line
+                      key={tick}
+                      x1="50"
+                      y1={y}
+                      x2="500"
+                      y2={y}
+                      stroke="#1e293b"
+                      strokeWidth="1"
+                    />
+                  );
+                })}
+
+                {(() => {
+                  const range = equityCurve.max - equityCurve.min || 1;
+                  const y = 20 + ((equityCurve.max - 0) / range) * 180;
+                  return (
+                    <line
+                      x1="50"
+                      y1={y}
+                      x2="500"
+                      y2={y}
+                      stroke="#475569"
+                      strokeWidth="1.5"
+                      strokeDasharray="5 4"
+                    />
+                  );
+                })()}
+
+                <polyline
+                  fill="none"
+                  stroke="#60a5fa"
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  points={equityCurve.points
+                    .map((p, i) => {
+                      const range = equityCurve.max - equityCurve.min || 1;
+                      const x =
+                        50 +
+                        (i / (equityCurve.points.length - 1 || 1)) * 450;
+                      const y = 20 + ((equityCurve.max - p.y) / range) * 180;
+                      return `${x},${y}`;
+                    })
+                    .join(" ")}
+                />
+
+                {(() => {
+                  const range = equityCurve.max - equityCurve.min || 1;
+                  const y = 20 + ((equityCurve.max - 0) / range) * 180;
+                  return (
+                    <circle
+                      cx="50"
+                      cy={y}
+                      r="4"
+                      fill="#94a3b8"
+                      stroke="#0f172a"
+                      strokeWidth="2"
+                    />
+                  );
+                })()}
+
+                {(() => {
+                  const last = equityCurve.points[equityCurve.points.length - 1];
+                  const range = equityCurve.max - equityCurve.min || 1;
+                  const x = 50 + 450;
+                  const y = 20 + ((equityCurve.max - last.y) / range) * 180;
+                  return (
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r="5"
+                      fill="#60a5fa"
+                      stroke="#0f172a"
+                      strokeWidth="2"
+                    />
+                  );
+                })()}
+              </svg>
+
+              <div className="absolute left-0 top-[20px] bottom-[40px] w-12 flex flex-col justify-between text-[10px] text-slate-500 pointer-events-none">
+                {[...equityCurve.yTicks].reverse().map((tick) => (
+                  <span key={tick} className="leading-none">
+                    {tick >= 0 ? `$${tick}` : `-$${Math.abs(tick)}`}
+                  </span>
+                ))}
+              </div>
+
+              <div className="absolute bottom-1 left-[50px] right-[20px] flex justify-between text-[10px] text-slate-500">
+                {equityCurve.xLabels.map((l, i) => (
+                  <span key={i}>{l.label}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -306,6 +481,30 @@ export default function Dashboard() {
             “The market rewards patience, not prediction.”
             <span className="block text-slate-600 mt-1">— AB Sniper</span>
           </p>
+        </div>
+      </div>
+
+      {/* Watchlist – below the equity curve */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white">Watchlist</h3>
+          <span className="text-xs text-slate-500">Prices 0.00</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {watchlistSymbols.map((w) => (
+            <div
+              key={w.symbol}
+              className="flex items-center justify-between text-sm py-2.5 px-3 rounded-xl bg-slate-950/50 border border-slate-800"
+            >
+              <span className="text-slate-300 flex items-center gap-2">
+                <span>{w.flag}</span> {w.symbol}
+              </span>
+              <div className="text-right">
+                <span className="text-slate-500 tabular-nums block">0.00</span>
+                <span className="text-slate-600 text-xs">0.00%</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -440,10 +639,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Trades + Calendar + Monthly P&L summary */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      {/* Recent Trades */}
+      <div className="grid grid-cols-1 gap-4">
         {/* Recent Trades */}
-        <div className="xl:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-white">Recent Trades</h3>
             <Link to="/journal" className="text-xs text-emerald-400 hover:underline">
@@ -495,73 +694,6 @@ export default function Dashboard() {
               </table>
             </div>
           )}
-        </div>
-
-        {/* Monthly Calendar */}
-        <div className="xl:col-span-4 bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-          <h3 className="text-sm font-semibold text-white mb-2">Monthly Calendar</h3>
-          <p className="text-xs text-slate-500 mb-2">{calendar.label}</p>
-          <div className="grid grid-cols-7 gap-1 text-[10px] text-center text-slate-500 mb-1">
-            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-              <div key={d}>{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {calendar.cells.map((cell, i) =>
-              cell === null ? (
-                <div key={`e-${i}`} className="aspect-square" />
-              ) : (
-                <div
-                  key={cell.day}
-                  className={`aspect-square rounded-md flex items-center justify-center text-[10px] font-medium ${
-                    cell.status === "win"
-                      ? "bg-emerald-500/80 text-slate-950"
-                      : cell.status === "loss"
-                        ? "bg-rose-500/80 text-white"
-                        : cell.status === "flat"
-                          ? "bg-slate-600 text-white"
-                          : "bg-slate-800/80 text-slate-500"
-                  }`}
-                >
-                  {cell.day}
-                </div>
-              )
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-slate-400">
-            <span>● Profit {calendar.profitable}</span>
-            <span>● Loss {calendar.losing}</span>
-            <span>● None {calendar.noTrade}</span>
-          </div>
-        </div>
-
-        {/* Monthly P&L summary */}
-        <div className="xl:col-span-3 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col">
-          <h3 className="text-sm font-semibold text-white mb-3">Monthly P&L</h3>
-          <p
-            className={`text-2xl font-bold ${
-              calendar.monthPnl >= 0 ? "text-emerald-400" : "text-rose-400"
-            }`}
-          >
-            {formatMoney(calendar.monthPnl)}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">From logged journal trades</p>
-          <div className="mt-auto pt-4 space-y-2 text-xs">
-            <div className="flex justify-between text-slate-400">
-              <span>Best day</span>
-              <span className="text-slate-300">$0.00</span>
-            </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Worst day</span>
-              <span className="text-slate-300">$0.00</span>
-            </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Avg. trade</span>
-              <span className="text-slate-300">
-                {stats.total ? formatMoney(stats.net / stats.total) : "$0.00"}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 
