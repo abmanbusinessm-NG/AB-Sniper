@@ -11,6 +11,7 @@ import WeeklyAnalysis from "./pages/WeeklyAnalysis";
 import ContactSocialMedia from "./pages/ContactSocialMedia";
 import Dashboard from "./pages/Dashboard";
 import Journal from "./pages/Journal";
+import MoneyManagement from "./pages/MoneyManagement";
 import Learn from "./pages/Learn";
 import GrowthTracker from "./pages/GrowthTracker";
 
@@ -35,6 +36,7 @@ function App() {
           <Route path="/learn" element={<Learn />} />
           <Route path="/weekly-analysis" element={<WeeklyAnalysis />} />
           <Route path="/journal" element={<Journal />} />
+          <Route path="/money" element={<MoneyManagement />} />
           <Route path="/certificate" element={<Certificate />} />
           <Route path="/payout" element={<Payout />} />
           <Route path="/growth-tracker" element={<GrowthTracker />} />

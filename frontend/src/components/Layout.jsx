@@ -6,9 +6,10 @@ const navItems = [
   { path: "/learn", label: "Learn", icon: "📚" },
   { path: "/weekly-analysis", label: "Weekly Analysis", icon: "📊" },
   { path: "/journal", label: "Journal", icon: "📓" },
+  { path: "/growth-tracker", label: "Growth Tracker", icon: "📈" }, // ← NEW
+  { path: "/money", label: "Money Management", icon: "💰" },
   { path: "/certificate", label: "Certificate", icon: "🎓" },
   { path: "/payout", label: "Payout", icon: "💸" },
-  { path: "/growth-tracker", label: "Growth Tracker", icon: "📈" }, // ← NEW
   { path: "/contact-social-media", label: "Contact and Social Media", icon: "💬" },
 ];
 
