@@ -3,8 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 const TRADES_KEY = "tradevibe_journal_trades";
 const REVIEWS_KEY = "tradevibe_journal_reviews";
 
+function getLocalDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 const emptyTrade = () => ({
-  date: new Date().toISOString().slice(0, 10),
+  date: getLocalDate(),
   market: "",
   setup: "",
   side: "LONG",
@@ -59,7 +66,7 @@ export default function Journal() {
   const [form, setForm] = useState(emptyTrade);
   const [editId, setEditId] = useState(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDate();
   const [reviewDate, setReviewDate] = useState(today);
   const [review, setReview] = useState({
     session: "London → New York",
@@ -75,6 +82,7 @@ export default function Journal() {
     },
     lesson: "",
   });
+  const [reviewSaved, setReviewSaved] = useState(false);
 
   const [calMonth, setCalMonth] = useState(() => {
     const n = new Date();
@@ -84,19 +92,25 @@ export default function Journal() {
   const emotionOptions = ["Patient", "Focused", "FOMO", "Anxious", "Confident", "Tilted"];
   useEffect(() => {
     setTrades(loadJSON(TRADES_KEY, []));
-    setReviews(loadJSON(REVIEWS_KEY, {}));
+    const loaded = loadJSON(REVIEWS_KEY, {});
+    setReviews(loaded && typeof loaded === "object" && !Array.isArray(loaded) ? loaded : {});
   }, []);
 
   useEffect(() => {
     const r = reviews[reviewDate];
-    if (r) {
+    if (r && typeof r === "object") {
       setReview({
         session: r.session || "London → New York",
         bias: r.bias || "",
         thesis: r.thesis || "",
-        quality: r.quality ?? 4,
-        emotions: r.emotions || [],
-        checklist: r.checklist || { htf: false, risk: false, news: false, stop: false },
+        quality: typeof r.quality === "number" ? r.quality : 4,
+        emotions: Array.isArray(r.emotions) ? r.emotions : [],
+        checklist: {
+          htf: !!r.checklist?.htf,
+          risk: !!r.checklist?.risk,
+          news: !!r.checklist?.news,
+          stop: !!r.checklist?.stop,
+        },
         lesson: r.lesson || "",
       });
     } else {
@@ -299,9 +313,28 @@ export default function Journal() {
   };
 
   const saveReview = () => {
-    const next = { ...reviews, [reviewDate]: { ...review } };
+    const payload = {
+      session: review.session || "London → New York",
+      bias: String(review.bias || "").trim(),
+      thesis: String(review.thesis || "").trim(),
+      quality: review.quality ?? 4,
+      emotions: Array.isArray(review.emotions) ? review.emotions : [],
+      checklist: {
+        htf: !!review.checklist?.htf,
+        risk: !!review.checklist?.risk,
+        news: !!review.checklist?.news,
+        stop: !!review.checklist?.stop,
+      },
+      lesson: String(review.lesson || "").trim(),
+      savedAt: new Date().toISOString(),
+    };
+
+    const next = { ...reviews, [reviewDate]: payload };
     setReviews(next);
-    saveJSON(REVIEWS_KEY, next);
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(next));
+
+    setReviewSaved(true);
+    setTimeout(() => setReviewSaved(false), 2000);
   };
 
   return (
@@ -506,6 +539,31 @@ export default function Journal() {
             />
           </div>
 
+          {Object.keys(reviews).length > 0 && (
+            <div className="mb-4">
+              <p className="text-[11px] text-slate-500 mb-1.5">Saved days</p>
+              <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                {Object.keys(reviews)
+                  .sort()
+                  .reverse()
+                  .map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setReviewDate(d)}
+                      className={`text-[11px] px-2 py-1 rounded-lg border transition ${
+                        reviewDate === d
+                          ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                          : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white"
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 flex-1 text-sm">
             <div>
               <label className="text-slate-500 text-xs block mb-1">Session</label>
@@ -632,9 +690,13 @@ export default function Journal() {
           <button
             type="button"
             onClick={saveReview}
-            className="mt-4 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold py-3 rounded-xl transition"
+            className={`mt-4 w-full font-semibold py-3 rounded-xl transition ${
+              reviewSaved
+                ? "bg-emerald-400 text-slate-950"
+                : "bg-emerald-500 hover:bg-emerald-400 text-slate-950"
+            }`}
           >
-            Save Review
+            {reviewSaved ? "Saved ✓" : "Save Review"}
           </button>
         </div>
       </div>
