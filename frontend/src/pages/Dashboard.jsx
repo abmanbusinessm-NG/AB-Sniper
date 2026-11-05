@@ -24,6 +24,11 @@ function formatMoney(n) {
   return `${sign}$${Math.abs(n).toFixed(2)}`;
 }
 
+function formatLevel(n) {
+  const sign = n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
 const defaultPlan = [
   { id: "levels", label: "Mark key levels (PDH/PDL, liquidity)", done: false },
   { id: "london", label: "Wait for London session (3AM – 6AM EAT)", done: false },
@@ -45,6 +50,8 @@ export default function Dashboard() {
   const [trades, setTrades] = useState([]);
   const [plan, setPlan] = useState(defaultPlan);
   const [now, setNow] = useState(new Date());
+  const [curveRange, setCurveRange] = useState("ALL");
+  const [hover, setHover] = useState(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -87,95 +94,91 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [trades]);
 
-  // Equity curve – starts at $0, flat on no-trade days
+  const RANGE_DAYS = {
+    "1D": 1,
+    "1W": 7,
+    "1M": 30,
+    "3M": 90,
+    "6M": 180,
+    "1Y": 365,
+    ALL: null,
+  };
+
   const equityCurve = useMemo(() => {
-    if (!trades.length) {
-      return {
-        points: [{ date: "Start", y: 0, hasTrade: false }],
-        max: 100,
-        min: 0,
-        final: 0,
-        yTicks: [0, 100],
-        xLabels: [{ idx: 0, label: "Start" }],
-      };
-    }
+    const startBal = Number(localStorage.getItem("ab_sniper_starting_balance"));
+    const initial = Number.isFinite(startBal) ? startBal : 0;
 
     const sorted = [...trades]
       .filter((t) => t.date)
-      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-
-    const byDay = {};
-    sorted.forEach((t) => {
-      const d = t.date;
-      if (!byDay[d]) byDay[d] = 0;
-      byDay[d] += parseResult(t.result);
-    });
-
-    const days = Object.keys(byDay).sort();
-    const firstDay = new Date(days[0] + "T12:00:00");
-    const lastDay = new Date(days[days.length - 1] + "T12:00:00");
-
-    const points = [{ date: "Start", y: 0, hasTrade: false }];
-
-    let cumulative = 0;
-    const cursor = new Date(firstDay);
-
-    while (cursor <= lastDay) {
-      const key = cursor.toISOString().slice(0, 10);
-      if (byDay[key] !== undefined) {
-        cumulative += byDay[key];
-      }
-      points.push({
-        date: key,
-        y: cumulative,
-        hasTrade: byDay[key] !== undefined,
+      .sort((a, b) => {
+        const ka = `${a.date}|${a.time || "00:00"}|${a.id || ""}`;
+        const kb = `${b.date}|${b.time || "00:00"}|${b.id || ""}`;
+        return ka.localeCompare(kb);
       });
-      cursor.setDate(cursor.getDate() + 1);
+
+    const days = RANGE_DAYS[curveRange];
+    const cutoff = new Date();
+    cutoff.setHours(12, 0, 0, 0);
+    if (days != null) cutoff.setDate(cutoff.getDate() - days);
+
+    const inWindow = (dateStr) => {
+      if (days == null) return true;
+      return new Date(dateStr + "T12:00:00") >= cutoff;
+    };
+
+    let equity = initial;
+    for (const t of sorted) {
+      if (!inWindow(t.date)) equity += parseResult(t.result);
+    }
+    const windowStart = equity;
+
+    const points = [
+      {
+        equity,
+        pnl: 0,
+        date: days == null ? "Start" : cutoff.toISOString().slice(0, 10),
+        time: "",
+        market: "",
+      },
+    ];
+
+    for (const t of sorted) {
+      if (!inWindow(t.date)) continue;
+      const pnl = parseResult(t.result);
+      equity += pnl;
+      points.push({
+        equity,
+        pnl,
+        date: t.date,
+        time: t.time || "",
+        market: t.market || "",
+      });
     }
 
-    const ys = points.map((p) => p.y);
-    let max = Math.max(...ys, 0);
-    let min = Math.min(...ys, 0);
-
-    const step = 100;
-    max = Math.ceil(max / step) * step;
-    min = Math.floor(min / step) * step;
-    if (max === min) max = min + step;
-    if (max === 0 && min === 0) max = 100;
-
-    const yTicks = [];
-    for (let v = min; v <= max; v += step) {
-      yTicks.push(v);
+    const ys = points.map((p) => p.equity);
+    let max = Math.max(...ys);
+    let min = Math.min(...ys);
+    const pad = Math.max((max - min) * 0.12, Math.abs(windowStart) * 0.02, 20);
+    max += pad;
+    min -= pad;
+    if (max === min) {
+      max += 50;
+      min -= 50;
     }
 
-    const xLabels = [];
-    const labelCount = Math.min(8, points.length);
-    for (let i = 0; i < labelCount; i++) {
-      const idx = Math.round((i / (labelCount - 1 || 1)) * (points.length - 1));
-      const p = points[idx];
-      let label = p.date === "Start" ? "Start" : p.date;
-      if (p.date !== "Start") {
-        try {
-          label = new Date(p.date + "T12:00:00").toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          });
-        } catch {
-          /* keep */
-        }
-      }
-      xLabels.push({ idx, label });
-    }
+    const yTicks = [min, (min + max) / 2, max];
 
     return {
       points,
       max,
       min,
-      final: cumulative,
+      final: equity,
+      windowStart,
       yTicks,
-      xLabels,
+      maxLoss: initial > 0 ? initial * 0.9 : null,
+      dailyDd: windowStart > 0 ? windowStart * 0.95 : null,
     };
-  }, [trades]);
+  }, [trades, curveRange]);
 
   const setups = useMemo(() => {
     const map = {};
@@ -294,26 +297,35 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {/* Trading Growth Curve */}
         <div className="xl:col-span-9 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 min-h-[340px] flex flex-col">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             <div>
               <h3 className="text-sm font-semibold text-white">Trading Growth Curve</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Starts at $0 · from your Journal trades</p>
+              <p className="text-xs text-slate-500">Realized equity after each closed trade</p>
             </div>
-
-            <div className="flex flex-wrap items-center gap-4 text-xs">
-              <span className="flex items-center gap-1.5 text-slate-300">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                Equity
-              </span>
-              <span
-                className={`font-semibold ${
-                  equityCurve.final >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
-              >
-                {formatMoney(equityCurve.final)}
-              </span>
+            <div className="flex flex-wrap gap-1">
+              {["1D", "1W", "1M", "3M", "6M", "1Y", "ALL"].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCurveRange(key)}
+                  className={`px-2 py-1 rounded-md text-[11px] border ${
+                    curveRange === key
+                      ? "bg-sky-500/20 border-sky-400 text-sky-300"
+                      : "border-slate-700 text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {key === "ALL" ? "All" : key}
+                </button>
+              ))}
             </div>
           </div>
+          <p
+            className={`text-lg font-bold ${
+              equityCurve.final >= equityCurve.windowStart ? "text-emerald-400" : "text-rose-400"
+            }`}
+          >
+            {formatMoney(equityCurve.final).replace(/^\+/, "")}
+          </p>
 
           {equityCurve.points.length <= 1 ? (
             <div className="flex-1 rounded-xl border border-dashed border-slate-700 bg-slate-950/50 flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
@@ -326,126 +338,110 @@ export default function Dashboard() {
               <svg
                 viewBox="0 0 520 240"
                 className="w-full h-full"
-                preserveAspectRatio="none"
-              >
-                <path
-                  d={(() => {
-                    const range = equityCurve.max - equityCurve.min || 1;
-                    const toX = (i) =>
-                      50 + (i / (equityCurve.points.length - 1 || 1)) * 450;
-                    const toY = (v) =>
-                      20 + ((equityCurve.max - v) / range) * 180;
-
-                    let d = `M ${toX(0)} ${toY(0)} `;
-                    equityCurve.points.forEach((p, i) => {
-                      d += `L ${toX(i)} ${toY(p.y)} `;
-                    });
-                    d += `L ${toX(equityCurve.points.length - 1)} ${toY(0)} Z`;
-                    return d;
-                  })()}
-                  fill={
-                    equityCurve.final >= 0
-                      ? "rgba(96, 165, 250, 0.12)"
-                      : "rgba(251, 113, 133, 0.12)"
+                onMouseLeave={() => setHover(null)}
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 520;
+                  const n = equityCurve.points.length;
+                  let best = 0;
+                  let bestDist = Infinity;
+                  for (let i = 0; i < n; i++) {
+                    const px = 50 + (i / (n - 1 || 1)) * 450;
+                    const d = Math.abs(px - x);
+                    if (d < bestDist) {
+                      bestDist = d;
+                      best = i;
+                    }
                   }
-                />
-
-                {equityCurve.yTicks.map((tick) => {
-                  const range = equityCurve.max - equityCurve.min || 1;
-                  const y = 20 + ((equityCurve.max - tick) / range) * 180;
-                  return (
-                    <line
-                      key={tick}
-                      x1="50"
-                      y1={y}
-                      x2="500"
-                      y2={y}
-                      stroke="#1e293b"
-                      strokeWidth="1"
-                    />
-                  );
-                })}
-
+                  setHover(best);
+                }}
+              >
                 {(() => {
+                  const pts = equityCurve.points;
+                  const n = pts.length;
                   const range = equityCurve.max - equityCurve.min || 1;
-                  const y = 20 + ((equityCurve.max - 0) / range) * 180;
-                  return (
-                    <line
-                      x1="50"
-                      y1={y}
-                      x2="500"
-                      y2={y}
-                      stroke="#475569"
-                      strokeWidth="1.5"
-                      strokeDasharray="5 4"
-                    />
-                  );
-                })()}
+                  const toX = (i) => 50 + (i / (n - 1 || 1)) * 450;
+                  const toY = (v) => 20 + ((equityCurve.max - v) / range) * 180;
 
-                <polyline
-                  fill="none"
-                  stroke="#60a5fa"
-                  strokeWidth="2.5"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  points={equityCurve.points
-                    .map((p, i) => {
-                      const range = equityCurve.max - equityCurve.min || 1;
-                      const x =
-                        50 +
-                        (i / (equityCurve.points.length - 1 || 1)) * 450;
-                      const y = 20 + ((equityCurve.max - p.y) / range) * 180;
-                      return `${x},${y}`;
-                    })
-                    .join(" ")}
-                />
+                  let line = `M ${toX(0)} ${toY(pts[0].equity)}`;
+                  for (let i = 1; i < n; i++) {
+                    line += ` H ${toX(i)} V ${toY(pts[i].equity)}`;
+                  }
+                  const area = `${line} V 200 H ${toX(0)} Z`;
 
-                {(() => {
-                  const range = equityCurve.max - equityCurve.min || 1;
-                  const y = 20 + ((equityCurve.max - 0) / range) * 180;
-                  return (
-                    <circle
-                      cx="50"
-                      cy={y}
-                      r="4"
-                      fill="#94a3b8"
-                      stroke="#0f172a"
-                      strokeWidth="2"
-                    />
-                  );
-                })()}
+                  const ref = (value) =>
+                    value == null ? null : 20 + ((equityCurve.max - value) / range) * 180;
 
-                {(() => {
-                  const last = equityCurve.points[equityCurve.points.length - 1];
-                  const range = equityCurve.max - equityCurve.min || 1;
-                  const x = 50 + 450;
-                  const y = 20 + ((equityCurve.max - last.y) / range) * 180;
                   return (
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r="5"
-                      fill="#60a5fa"
-                      stroke="#0f172a"
-                      strokeWidth="2"
-                    />
+                    <>
+                      {equityCurve.yTicks.map((tick, i) => (
+                        <g key={i}>
+                          <line
+                            x1="50"
+                            x2="500"
+                            y1={ref(tick)}
+                            y2={ref(tick)}
+                            stroke="#1e293b"
+                            strokeWidth="1"
+                          />
+                        </g>
+                      ))}
+
+                      {ref(equityCurve.maxLoss) != null && (
+                        <line
+                          x1="50"
+                          x2="500"
+                          y1={ref(equityCurve.maxLoss)}
+                          y2={ref(equityCurve.maxLoss)}
+                          stroke="#f43f5e"
+                          strokeDasharray="4 4"
+                          strokeWidth="1"
+                        />
+                      )}
+                      {ref(equityCurve.dailyDd) != null && (
+                        <line
+                          x1="50"
+                          x2="500"
+                          y1={ref(equityCurve.dailyDd)}
+                          y2={ref(equityCurve.dailyDd)}
+                          stroke="#f59e0b"
+                          strokeDasharray="3 3"
+                          strokeWidth="1"
+                        />
+                      )}
+
+                      <path d={area} fill="rgba(96, 165, 250, 0.12)" />
+                      <path
+                        d={line}
+                        fill="none"
+                        stroke="#60a5fa"
+                        strokeWidth="2"
+                        strokeLinejoin="miter"
+                        strokeLinecap="butt"
+                      />
+
+                      {(() => {
+                        const i = hover ?? n - 1;
+                        const p = pts[i];
+                        return (
+                          <circle cx={toX(i)} cy={toY(p.equity)} r="3.5" fill="#e0f2fe" />
+                        );
+                      })()}
+                    </>
                   );
                 })()}
               </svg>
 
-              <div className="absolute left-0 top-[20px] bottom-[40px] w-12 flex flex-col justify-between text-[10px] text-slate-500 pointer-events-none">
-                {[...equityCurve.yTicks].reverse().map((tick) => (
-                  <span key={tick} className="leading-none">
-                    {tick >= 0 ? `$${tick}` : `-$${Math.abs(tick)}`}
-                  </span>
-                ))}
-              </div>
-
-              <div className="absolute bottom-1 left-[50px] right-[20px] flex justify-between text-[10px] text-slate-500">
-                {equityCurve.xLabels.map((l, i) => (
-                  <span key={i}>{l.label}</span>
-                ))}
-              </div>
+              {hover != null && equityCurve.points[hover] && (
+                <div className="absolute top-2 right-2 text-xs bg-slate-950/90 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 pointer-events-none">
+                  <div>
+                    {equityCurve.points[hover].date} {equityCurve.points[hover].time}
+                  </div>
+                  <div>{equityCurve.points[hover].market || "Equity"}</div>
+                  <div>Trade P&L: {formatMoney(equityCurve.points[hover].pnl)}</div>
+                  <div>Equity: {formatLevel(equityCurve.points[hover].equity)}</div>
+                </div>
+              )}
             </div>
           )}
         </div>
