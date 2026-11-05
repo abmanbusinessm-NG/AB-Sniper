@@ -60,6 +60,16 @@ function money(n, ccy) {
   }
 }
 
+function statusStyle(status) {
+  const s = String(status || "").toLowerCase();
+  if (s.includes("fund")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+  if (s.includes("breach") || s.includes("fail"))
+    return "bg-rose-500/15 text-rose-400 border-rose-500/30";
+  if (s.includes("phase")) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+  if (s.includes("inactive")) return "bg-slate-500/15 text-slate-400 border-slate-500/30";
+  return "bg-cyan-500/15 text-cyan-300 border-cyan-500/30";
+}
+
 export default function MoneyManagement() {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(empty());
@@ -122,6 +132,12 @@ export default function MoneyManagement() {
   const net = recovered - invested;
   const funded = props.filter((r) => r.reachedFunded).length;
   const paid = props.filter((r) => r.receivedPayout).length;
+  const onPhase = props.filter((r) => String(r.status || "").toLowerCase().includes("phase")).length;
+  const fundedLive = props.filter((r) => String(r.status || "").toLowerCase().includes("fund")).length;
+  const breached = props.filter((r) => {
+    const status = String(r.status || "").toLowerCase();
+    return status.includes("breach") || status.includes("fail");
+  }).length;
 
   const visible = scoped.filter((r) => {
     if (type !== "all" && r.kind !== type) return false;
@@ -226,6 +242,13 @@ export default function MoneyManagement() {
         {invested ? `${((payouts / invested) * 100).toFixed(1)}%` : "—"}
         {currencies.length > 1 ? " · Currencies are not added together." : ""}
       </p>
+      <p className="text-sm text-slate-400">
+        On phase: <span className="font-medium text-amber-300">{onPhase}</span>
+        {" · "}
+        Funded (live): <span className="font-medium text-emerald-400">{fundedLive}</span>
+        {" · "}
+        Breached/Failed: <span className="font-medium text-rose-400">{breached}</span>
+      </p>
 
       <div className="flex flex-wrap gap-3">
         <input className={box} placeholder="Search firm or broker" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -244,7 +267,7 @@ export default function MoneyManagement() {
               <th>Type</th>
               <th>Name</th>
               <th>Invested</th>
-              <th>Funded</th>
+              <th>Status</th>
               <th>Payout</th>
               <th>Plan</th>
               <th></th>
@@ -264,7 +287,13 @@ export default function MoneyManagement() {
                 <td>{r.kind === "prop" ? "Prop" : "Live"}</td>
                 <td>{r.name}</td>
                 <td>{money(r.amount, r.currency)}</td>
-                <td>{r.kind === "prop" ? (r.reachedFunded ? "Yes" : "No") : "—"}</td>
+                <td>
+                  <span
+                    className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full border ${statusStyle(r.status)}`}
+                  >
+                    {r.status || "—"}
+                  </span>
+                </td>
                 <td>{r.kind === "prop" ? (r.receivedPayout ? money(r.payout, r.currency) : "No") : "—"}</td>
                 <td>{r.kind === "live" ? (r.planSucceeded ? "Yes" : "No") : "—"}</td>
                 <td className="space-x-3 p-3">
