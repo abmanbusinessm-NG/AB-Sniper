@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 const TRADES_KEY = "tradevibe_journal_trades";
 const PLAN_KEY = "tradevibe_daily_plan";
+const TICKER = ["XAUUSD", "NAS100", "EURUSD", "GBPUSD", "DXY"];
+const TV_SYMBOLS = [
+  ["OANDA:XAUUSD", "XAUUSD"],
+  ["FOREXCOM:NAS100", "NAS100"],
+  ["CAPITALCOM:DXY", "DXY"],
+  ["TVC:US10Y", "US10Y"],
+  ["TVC:VIX", "VIX"],
+];
 
 function loadTrades() {
   try {
@@ -37,13 +45,37 @@ const defaultPlan = [
   { id: "news", label: "No trading during red-folder news", done: false },
 ];
 
-const watchlistSymbols = [
-  { symbol: "XAUUSD", flag: "🥇" },
-  { symbol: "NAS100", flag: "🇺🇸" },
-  { symbol: "DXY", flag: "💵" },
-  { symbol: "US10Y", flag: "🇺🇸" },
-  { symbol: "VIX", flag: "📉" },
-];
+function TvQuote({ symbol }) {
+  const host = useRef(null);
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    el.innerHTML = "";
+    const script = document.createElement("script");
+    script.src =
+      "https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      symbol,
+      width: "100%",
+      colorTheme: "dark",
+      isTransparent: true,
+      locale: "en",
+    });
+    el.appendChild(script);
+    return () => {
+      el.innerHTML = "";
+    };
+  }, [symbol]);
+
+  return (
+    <div
+      ref={host}
+      className="tradingview-widget-container h-[72px] overflow-hidden"
+    />
+  );
+}
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -52,6 +84,7 @@ export default function Dashboard() {
   const [now, setNow] = useState(new Date());
   const [curveRange, setCurveRange] = useState("ALL");
   const [hover, setHover] = useState(null);
+  const [tickerPct, setTickerPct] = useState({});
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -65,6 +98,35 @@ export default function Dashboard() {
     }
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/quotes");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (stop || !Array.isArray(data)) return;
+        const map = {};
+        data.forEach((quote) => {
+          if (quote && typeof quote.symbol === "string") {
+            map[quote.symbol] = Number.isFinite(quote.changePct)
+              ? quote.changePct
+              : null;
+          }
+        });
+        setTickerPct(map);
+      } catch {
+        // Keep the ticker placeholders when the quote service is unavailable.
+      }
+    };
+    load();
+    const id = setInterval(load, 30 * 60 * 1000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
   }, []);
 
   const stats = useMemo(() => {
@@ -225,24 +287,38 @@ export default function Dashboard() {
       {/* Top meta row */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-500">
         <p className="text-slate-400">
-          Market snapshot · values stay at zero until you connect live data or log trades
+          Market snapshot · percentage changes
         </p>
         <p>
           {dateStr} · {timeStr}
         </p>
       </div>
 
-      {/* Ticker strip (placeholder zeros — structure only) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        {["XAUUSD", "NAS100", "EURUSD", "GBPUSD", "DXY"].map((sym) => (
-          <div
-            key={sym}
-            className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between"
-          >
-            <span className="text-xs font-medium text-slate-300">{sym}</span>
-            <span className="text-xs text-slate-500">0.00</span>
-          </div>
-        ))}
+      {/* Ticker strip */}
+      <div className="flex gap-2 overflow-x-auto">
+        {TICKER.map((sym) => {
+          const pct = tickerPct[sym];
+          const up = (pct ?? 0) >= 0;
+          return (
+            <div
+              key={sym}
+              className="shrink-0 bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex items-center gap-2"
+            >
+              <span className="text-xs text-slate-300">{sym}</span>
+              <span
+                className={`text-xs tabular-nums ${
+                  pct == null
+                    ? "text-slate-500"
+                    : up
+                      ? "text-emerald-400"
+                      : "text-rose-400"
+                }`}
+              >
+                {pct == null ? "—" : `${up ? "+" : ""}${pct.toFixed(2)}%`}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Welcome + KPI cards */}
@@ -484,22 +560,11 @@ export default function Dashboard() {
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-white">Watchlist</h3>
-          <span className="text-xs text-slate-500">Prices 0.00</span>
+          <span className="text-xs text-slate-500">Live quotes</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {watchlistSymbols.map((w) => (
-            <div
-              key={w.symbol}
-              className="flex items-center justify-between text-sm py-2.5 px-3 rounded-xl bg-slate-950/50 border border-slate-800"
-            >
-              <span className="text-slate-300 flex items-center gap-2">
-                <span>{w.flag}</span> {w.symbol}
-              </span>
-              <div className="text-right">
-                <span className="text-slate-500 tabular-nums block">0.00</span>
-                <span className="text-slate-600 text-xs">0.00%</span>
-              </div>
-            </div>
+        <div className="grid gap-2">
+          {TV_SYMBOLS.map(([symbol]) => (
+            <TvQuote key={symbol} symbol={symbol} />
           ))}
         </div>
       </div>
