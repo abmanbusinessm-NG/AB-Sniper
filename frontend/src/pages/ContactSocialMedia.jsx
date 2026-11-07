@@ -1,8 +1,8 @@
 import { useState } from "react";
 
 const DEMO_FORM = {
-  name: "Alex Mensah",
-  email: "alex.demo@example.com",
+  name: "AB MAN",
+  email: "abmanbusinessm@gmail.com",
   topic: "Signal question",
   message:
     "Hi team, I'd like to know which sessions your EURUSD and XAUUSD setups focus on, and whether the strategy works on prop firm accounts.",
@@ -17,7 +17,7 @@ const TOPICS = [
 ];
 
 const SOCIALS = [
-  { name: "Telegram", handle: "@absniper_signals", url: "https://t.me/absniper_signals", note: "Live setups and trade updates" },
+  { name: "Telegram", handle: "@absniper_signals", url: "https://t.me/ABfxJournal", note: "Live setups and trade updates" },
   { name: "Instagram", handle: "@ab.sniper", url: "https://instagram.com/ab.sniper", note: "Chart breakdowns and results" },
   { name: "X", handle: "@ABSniperFX", url: "https://x.com/ABSniperFX", note: "Daily bias and market notes" },
   { name: "YouTube", handle: "AB Sniper FX", url: "https://youtube.com/@absniperfx", note: "Weekly analysis and tutorials" },
@@ -25,8 +25,8 @@ const SOCIALS = [
 ];
 
 const CONTACT = [
-  { label: "Email", value: "support@absniper.demo", href: "mailto:support@absniper.demo" },
-  { label: "WhatsApp", value: "+251 900 000 000", href: "https://wa.me/251900000000" },
+  { label: "Email", value: "abmanbusinessm@gmail.com", href: "mailto:abmanbusinessm@gmail.com" },
+  { label: "WhatsApp", value: "+251992788409", href: "https://wa.me/251992788409" },
   { label: "Reply time", value: "Within 24 hours, Mon to Fri" },
 ];
 
